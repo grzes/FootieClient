@@ -45,7 +45,7 @@ var AngledSprite = function(spritelist) {
     this.spritelist = spritelist;
     this.current = spritelist[spritelist.length -1];
 }
-AngledSprite._map = {0:6, 1:4, 2:3, 3:5, 4:7, 5:2, 6:0, 7:1, 8:6};
+AngledSprite._map = {0:6, 1:4, 2:3, 3:5, 4:7, 5:2, 6:0, 7:1, 8:6, NaN: 0};
 AngledSprite.getOrientation = function(v, o) {
         if (typeof(o) != 'undefined') return o;
 
@@ -111,6 +111,9 @@ RenderObject.prototype = {
     render: function(time) {
         this.pos.add(V2d.mul(this.vel, time));
         this.sprite.draw(this.pos.x, this.pos.y, time);
+    },
+    setState: function(state) {
+        ;
     }
 }
 
@@ -167,7 +170,18 @@ Player.prototype.stop = function() {
     this.sprite.setAngle(this.vel, this.orientation);
     this.vel.x = this.vel.y = 0;
 }
-
+Player.prototype.setState = function(s) {
+    switch (s) {
+        case P_STAND: {
+            this.stop();
+            };
+            break;
+        case P_WALK: {
+            this.walk();
+            };
+            break;
+    };
+};
 
 
 var Timer = function() {
@@ -297,62 +311,80 @@ Input.prototype = {
 
 var Footie = function(canvas) {
 	this.renderer = new Renderer(canvas.get(0), "sprites.png");
-	this.init(canvas);
+    this.canvas = canvas;
+	this.init();
 	this.run();
+
+    this.entities = {}
+    this.player_id = null;
+    this.input = null;
+
+
 };
 
 
 Footie.prototype = {
 
-	init: function(canvas) {
+	init: function() {
         var that = this;
-
-
-        this.player = new Player();
-        this.player.pos = new V2d(400, 240);
-        this.cursor = new Cursor(this.player);
-        this.renderer.addObject(this.cursor);
-
 
         var ball = new RenderObject();
         ball.sprite = SPRITEMAP.ball;
-        ball.pos = new V2d(120, 330);
-
+        ball.pos = new V2d(0, 0);
 		this.renderer.addObject(ball);
 
-        this.renderer.addObject(this.player);
 
         //this.network = new LoopbackServer("", function(a) { that.network_handler(a) });
         this.network = new Server("", function(a) { that.network_handler(a) });
-        this.input = new Input(this.network, canvas, this.cursor);
-
-
 	},
-    network_handler: function(game_state) {
-        var SPEED = 70;
-        var p = game_state.p0;
-        if (typeof(p) == 'undefined') return;
 
-        this.player.vel.x = SPEED * p.dirx;
-        this.player.vel.y = SPEED * p.diry;
+    addPlayer: function(indx, entity) {
+        var player = new Player();
+        player.setState(entity.state);
+        player.pos = new V2d(entity.pos[0], entity.pos[1]);
+        player.vel = new V2d(entity.vel[0], entity.vel[1]);
+        this.entities[indx] = player;
+        this.renderer.addObject(player);
 
-        switch (p.state) {
-            case P_STAND: {
-                this.player.stop();
-                };
-                break;
-            case P_WALK: {
-                this.player.walk();
-                };
-                break;
-        };
-
-
+        if (indx == this.player_id) {
+            this.cursor = new Cursor(player);
+            this.renderer.addObject(this.cursor);
+            this.input = new Input(this.network, this.canvas, this.cursor);
+            this.input.run();
+        }
     },
+
+    network_handler: function(game_state) {
+        if (game_state.hello) {
+            this.player_id = game_state.hello;
+            return;
+        }
+        var SPEED = 70;
+
+        for (indx in game_state) {
+            var state = game_state[indx];
+
+            if (!this.entities[indx]) {
+                this.addPlayer(indx, state);
+            }
+            var e = this.entities[indx];
+
+            e.vel.x = state.vel[0];
+            e.vel.y = state.vel[1];
+
+            e.pos.x = state.pos[0];
+            e.pos.y = state.pos[1];
+
+            if (typeof(state.state) != 'undefined') {
+                e.setState(state.state);
+            }
+        }
+    },
+
+
 	run: function() {
 		console.log("F: runing renderer.");
-		this.renderer.runAt(50);
-        this.input.run();
+		this.renderer.runAt(70);
 	}
 };
 
